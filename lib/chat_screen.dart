@@ -34,7 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (text != null) {
-      data['text'] = text;
+      data['texto'] = text;
     }
 
     FirebaseFirestore.instance.collection('messages').add(data);
@@ -47,7 +47,39 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Text('Olá'),
         elevation: 0,
       ),
-      body: TextComposer(_sendMessage),
+      body: Column(
+        children: <Widget>[
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream:
+                  FirebaseFirestore.instance.collection('messages').snapshots(),
+              builder: (context, snapshot) {
+                switch (snapshot.connectionState) {
+                  case ConnectionState.waiting:
+                    return Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  default:
+                    List<DocumentSnapshot<Map<String, dynamic>>> documents =
+                        snapshot.data!.docs.reversed
+                            .toList()
+                            .cast<DocumentSnapshot<Map<String, dynamic>>>();
+                    return ListView.builder(
+                      itemCount: documents.length,
+                      reverse: true,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          title: Text(documents[index].data()!['texto']),
+                        );
+                      },
+                    );
+                }
+              },
+            ),
+          ),
+          TextComposer(_sendMessage),
+        ],
+      ),
     );
   }
 }
