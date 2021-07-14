@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:bevelchat/text_composer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class ChatScreen extends StatefulWidget {
   @override
@@ -11,8 +13,73 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GlobalKey<ScaffoldMessengerState> _scaffoldKey =
+      GlobalKey<ScaffoldMessengerState>();
+
+  User? _currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      _currentUser = user;
+    });
+  }
+
+  Future<User?> _getUser() async {
+    if (_currentUser != null) return _currentUser;
+
+    try {
+      final GoogleSignInAccount? googleSignInAccount =
+          await _googleSignIn.signIn();
+      if (googleSignInAccount != null) {
+        final GoogleSignInAuthentication googleSignInAuthentication =
+            await googleSignInAccount.authentication;
+
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleSignInAuthentication.idToken,
+          idToken: googleSignInAuthentication.accessToken,
+        );
+
+        final UserCredential userCredential =
+            await FirebaseAuth.instance.signInWithCredential(credential);
+        try {
+          final User? user = userCredential.user;
+          return user;
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'account-exists-with-different-credential') {
+            print("Error: " + e.code);
+            return null;
+          } else if (e.code == 'invalid-credential') {
+            print("Error: " + e.code);
+            return null;
+          }
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      print("Error: " + e.code);
+      return null;
+    }
+  }
+
   void _sendMessage({String? text, File? img}) async {
-    Map<String, dynamic> data = {};
+    final User? user = await _getUser();
+
+    if (user == null) {
+      _scaffoldKey.currentState?.showSnackBar(SnackBar(
+        content:
+            Text("Não foi possível fazer o login. Por favor tente novamente."),
+        backgroundColor: Colors.red,
+      ));
+    }
+
+    Map<String, dynamic> data = {
+      "uid": user?.uid,
+      "senderMessage": user?.displayName,
+      "senderPhotoUrl": user?.photoURL,
+    };
 
     if (img != null) {
       UploadTask task = FirebaseStorage.instance
@@ -43,6 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         title: Text('Olá'),
         elevation: 0,
