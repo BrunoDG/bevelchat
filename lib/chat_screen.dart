@@ -7,6 +7,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'chat_message.dart';
+
 class ChatScreen extends StatefulWidget {
   @override
   _ChatScreenState createState() => _ChatScreenState();
@@ -24,7 +26,9 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
 
     FirebaseAuth.instance.authStateChanges().listen((user) {
-      _currentUser = user;
+      setState(() {
+        _currentUser = user;
+      });
     });
   }
 
@@ -32,34 +36,22 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentUser != null) return _currentUser;
 
     try {
-      final GoogleSignInAccount? googleSignInAccount =
+      final GoogleSignInAccount? _googleSignInAccount =
           await _googleSignIn.signIn();
-      if (googleSignInAccount != null) {
-        final GoogleSignInAuthentication googleSignInAuthentication =
-            await googleSignInAccount.authentication;
+      final GoogleSignInAuthentication _googleSignInAuthentication =
+          await _googleSignInAccount!.authentication;
 
-        final AuthCredential credential = GoogleAuthProvider.credential(
-          accessToken: googleSignInAuthentication.idToken,
-          idToken: googleSignInAuthentication.accessToken,
-        );
+      final AuthCredential _credential = GoogleAuthProvider.credential(
+        idToken: _googleSignInAuthentication.idToken,
+        accessToken: _googleSignInAuthentication.accessToken,
+      );
 
-        final UserCredential userCredential =
-            await FirebaseAuth.instance.signInWithCredential(credential);
-        try {
-          final User? user = userCredential.user;
-          return user;
-        } on FirebaseAuthException catch (e) {
-          if (e.code == 'account-exists-with-different-credential') {
-            print("Error: " + e.code);
-            return null;
-          } else if (e.code == 'invalid-credential') {
-            print("Error: " + e.code);
-            return null;
-          }
-        }
-      }
-    } on FirebaseAuthException catch (e) {
-      print("Error: " + e.code);
+      final UserCredential _authResult =
+          await FirebaseAuth.instance.signInWithCredential(_credential);
+
+      final User user = _authResult.user!;
+      return user;
+    } catch (error) {
       return null;
     }
   }
@@ -68,16 +60,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final User? user = await _getUser();
 
     if (user == null) {
-      _scaffoldKey.currentState?.showSnackBar(SnackBar(
-        content:
-            Text("Não foi possível fazer o login. Por favor tente novamente."),
-        backgroundColor: Colors.red,
-      ));
+      _scaffoldKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(
+              "Não foi possível fazer o login. Por favor tente novamente."),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
 
     Map<String, dynamic> data = {
       "uid": user?.uid,
-      "senderMessage": user?.displayName,
+      "senderName": user?.displayName,
       "senderPhotoUrl": user?.photoURL,
     };
 
@@ -112,8 +106,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        title: Text('Olá'),
+        title: Text(_currentUser != null
+            ? 'Olá, ${_currentUser!.displayName}'
+            : 'Chat App'),
+        centerTitle: true,
         elevation: 0,
+        actions: <Widget>[
+          _currentUser != null
+              ? IconButton(
+                  icon: Icon(Icons.exit_to_app),
+                  onPressed: () {
+                    FirebaseAuth.instance.signOut();
+                    _googleSignIn.signOut();
+                    _scaffoldKey.currentState?.showSnackBar(
+                      SnackBar(
+                        content: Text("Você saiu com sucesso!"),
+                      ),
+                    );
+                  },
+                )
+              : Container()
+        ],
       ),
       body: Column(
         children: <Widget>[
@@ -136,9 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemCount: documents.length,
                       reverse: true,
                       itemBuilder: (context, index) {
-                        return ListTile(
-                          title: Text(documents[index].data()!['texto']),
-                        );
+                        return ChatMessage(documents[index].data(), true);
                       },
                     );
                 }
