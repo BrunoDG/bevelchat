@@ -16,10 +16,10 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-  final GlobalKey<ScaffoldMessengerState> _scaffoldKey =
-      GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
 
   User? _currentUser;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -73,24 +73,36 @@ class _ChatScreenState extends State<ChatScreen> {
       "uid": user?.uid,
       "senderName": user?.displayName,
       "senderPhotoUrl": user?.photoURL,
+      "time": Timestamp.now(),
     };
 
     if (img != null) {
       UploadTask task = FirebaseStorage.instance
           .ref()
-          .child(DateTime.now().millisecondsSinceEpoch.toString())
+          .child(user!.uid + DateTime.now().millisecondsSinceEpoch.toString())
           .putFile(img);
+      setState(() {
+        _isLoading = true;
+      });
+
       try {
         TaskSnapshot snap = await task;
         String url = await snap.ref.getDownloadURL();
         print('Uploaded ${snap.bytesTransferred} bytes.');
         data['imgUrl'] = url;
+        setState(() {
+          _isLoading = false;
+        });
       } on FirebaseException catch (e) {
         print(task.snapshot);
 
         if (e.code == 'permission-denied') {
           print('Usuário não tem permissão para fazer upload nessa referência');
         }
+
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
 
@@ -132,8 +144,10 @@ class _ChatScreenState extends State<ChatScreen> {
         children: <Widget>[
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore.instance.collection('messages').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('messages')
+                  .orderBy("time")
+                  .snapshots(),
               builder: (context, snapshot) {
                 switch (snapshot.connectionState) {
                   case ConnectionState.waiting:
@@ -149,13 +163,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemCount: documents.length,
                       reverse: true,
                       itemBuilder: (context, index) {
-                        return ChatMessage(documents[index].data(), true);
+                        return ChatMessage(
+                            documents[index].data(),
+                            documents[index].data()?["uid"] ==
+                                _currentUser?.uid);
                       },
                     );
                 }
               },
             ),
           ),
+          _isLoading ? LinearProgressIndicator() : Container(),
           TextComposer(_sendMessage),
         ],
       ),
